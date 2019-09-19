@@ -16,6 +16,9 @@ class jobSubmitterSVJ(jobSubmitter):
         super(jobSubmitterSVJ,self).addDefaultOptions(parser)
         parser.add_option("-y", "--getpy", dest="getpy", default=False, action="store_true", help="make python file list for ntuple production (default = %default)")
         parser.add_option("--actualEvents", dest="actualEvents", default=False, action="store_true", help="count actual number of events from each input file (for python file list) (default = %default)")
+        self.modes.update({
+            "getpy": 1,
+        })
 
     def addExtraOptions(self,parser):
         super(jobSubmitterSVJ,self).addExtraOptions(parser)
@@ -40,10 +43,7 @@ class jobSubmitterSVJ(jobSubmitter):
             self.doPy(job)
         
     def checkDefaultOptions(self,options,parser):
-        if (options.submit + options.count + options.missing + options.getpy)>1:
-            parser.error("Options -c, -s, -m, -g are exclusive, pick one!")
-        if (options.submit + options.count + options.missing + options.prepare + options.getpy)==0:
-            parser.error("No operation mode selected! (-c, -p, -s, -m, -g)")
+        super(jobSubmitterSVJ,self).checkDefaultOptions(options,parser)
         if (options.actualEvents and not options.getpy):
             parser.error("Option --actualEvents only allowed for -y mode")
         if (options.actualEvents and options.skipParts!="auto"):
@@ -108,7 +108,8 @@ class jobSubmitterSVJ(jobSubmitter):
             # extra attribute to store actual events
             if self.actualEvents: job.actualEvents = 0
             # make name from params
-            job.name = self.helper.getOutName(pdict["mZprime"],pdict["mDark"],pdict["rinv"],pdict["alpha"],int(self.maxEvents),outpre=self.outpre)
+            self.helper.setModel(pdict["mZprime"],pdict["mDark"],pdict["rinv"],pdict["alpha"])
+            job.name = self.helper.getOutName(int(self.maxEvents),outpre=self.outpre)
             if self.verbose:
                 print "Creating job: "+job.name
             self.generatePerJob(job)
@@ -116,7 +117,7 @@ class jobSubmitterSVJ(jobSubmitter):
             # for auto skipping
             if self.skipParts=="auto":
                 injob = protoJob()
-                injob.name = self.helper.getOutName(pdict["mZprime"],pdict["mDark"],pdict["rinv"],pdict["alpha"],int(self.maxEvents),outpre=self.inpre)
+                injob.name = self.helper.getOutName(int(self.maxEvents),outpre=self.inpre)
                 infiles = {x.split('/')[-1].replace(".root","") for x in filter(None,os.popen("xrdfs "+self.redir+" ls "+self.indir).read().split('\n'))}
 
             # write job options to file - will be transferred with job
@@ -148,14 +149,13 @@ class jobSubmitterSVJ(jobSubmitter):
                 # get real part number
                 iActualJob = iJob+self.firstPart
 
-                iJobName = injob.makeName(iActualJob)
-                if (self.skipParts=="auto" and iJobName not in infiles) or (type(self.skipParts)==set and iActualJob in self.skipParts):
+                if (self.skipParts=="auto" and injob.makeName(iActualJob) not in infiles) or (type(self.skipParts)==set and iActualJob in self.skipParts):
                     if self.verbose: print "  skipping part "+str(iActualJob)
                     continue
 
                 if self.actualEvents:
                     from ROOT import TFile,TTree
-                    iFile = TFile.Open(self.redir+self.indir+"/"+iJobName+".root")
+                    iFile = TFile.Open(self.redir+self.indir+"/"+injob.makeName(iActualJob)+".root")
                     iTree = iFile.Get("Events")
                     job.actualEvents += iTree.GetEntries()
 
@@ -193,8 +193,6 @@ class jobSubmitterSVJ(jobSubmitter):
                     counter += 1
 
         with open(self.getpy_weights,'a') as wfile:
-            # this is somewhat ugly
-            mZprime = int(job.name.split('_')[2].split('-')[-1])
             nEvents = job.actualEvents if self.actualEvents else int(self.maxEvents)*len(job.nums)
-            line = '        MCSample("'+job.name+'", "", "", "Constant", '+str(self.helper.getPythiaXsec(mZprime))+", "+str(nEvents)+'),';
+            line = '        MCSample("'+job.name+'", "", "", "Constant", '+str(nEvents)+'),';
             wfile.write(line+"\n")

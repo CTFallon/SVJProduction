@@ -3,6 +3,8 @@
 *.png
 *.pdf
 *.pyc
+*.tar.gz
+*.eps
 
 # Compiled Object files
 *.slo
@@ -36,3 +38,11 @@
 
 # python kibble
 __init__.py
+
+# text files
+*.log
+*.stdout
+*.stderr
+*.condor
+/batch/jobExecCondor_*.jdl
+*.csv
